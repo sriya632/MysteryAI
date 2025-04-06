@@ -177,7 +177,7 @@ Instructions:
       )}
 
       {/* Modal */}
-      {showModal && selectedIndex !== null && caseData?.[viewing + "s"]?.[selectedIndex] && (
+      {showModal && selectedIndex !== null && caseData?.[viewing === "suspect" ? "suspects" : "witnesses"]?.[selectedIndex] && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 backdrop-blur-sm">
           <div className="bg-slate-800 border border-purple-900 p-8 rounded-xl shadow-2xl w-full max-w-xl relative">
             <button
@@ -188,7 +188,7 @@ Instructions:
             </button>
 
             {(() => {
-              const character = caseData[viewing + "s"][selectedIndex];
+              const character = caseData[viewing === "suspect" ? "suspects" : "witnesses"][selectedIndex];
               return (
                 <>
                   <div className="text-white space-y-2 mb-6">
