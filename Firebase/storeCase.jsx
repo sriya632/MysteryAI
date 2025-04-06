@@ -1,5 +1,5 @@
 // src/storeCase.js
-import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, updateDoc } from "firebase/firestore";
 import { db } from "./casesDb";
 
 export const storeCaseInFirestore = async (caseData, userId) => {
@@ -30,11 +30,16 @@ export const updateCaseChat = async (caseId, updatedChatData) => {
     }
   };
 
-export const updateUserStats = async (userId, isWin, timeTaken) => {
-  const ref = doc(db, "users", userId, "stats", "default");
-  await updateDoc(ref, {
-    gamesPlayed: increment(1),
-    wins: increment(isWin ? 1 : 0),
-    totalSolveTime: increment(timeTaken || 0)
-  });
+export const updateCaseWithGuess = async (caseId, { user_guess, guess_correct }) => {
+  try {
+    const docRef = doc(db, "cases", caseId);
+    await updateDoc(docRef, {
+      user_guess,
+      guess_correct,
+      timestamp: new Date()
+    });
+    console.log("✅ Guess stored.");
+  } catch (error) {
+    console.error("❌ Error storing guess:", error);
+  }
 };
