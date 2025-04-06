@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import Accusation from "./accusation";
 import { useCase } from "./useCase";
-import { storeCaseInFirestore, updateCaseChat } from "./../../Firebase/storeCase"; // Adjust the import path as necessary
+import {storeCaseInFirestore,updateCaseChat } from "../../Firebase/storeCase.jsx" // Adjust the import path as necessary
 
 const API_KEY = "AIzaSyA63dd1fVVukrf0mvmfFo8DoRH5vpzigPs" // Replace with your actual key
 
