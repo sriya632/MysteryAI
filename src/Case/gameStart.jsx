@@ -1,9 +1,12 @@
 import React, { useState } from "react";
+import { useCase } from "./useCase";
+import { storeCaseInFirestore, updateCaseChat } from "./../../Firebase/storeCase"; // Adjust the import path as necessary
 
 const API_KEY = "AIzaSyA63dd1fVVukrf0mvmfFo8DoRH5vpzigPs" // Replace with your actual key
 
+
+
 const App = () => {
-  const [caseData, setCaseData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedIndex, setSelectedIndex] = useState(null);
@@ -11,6 +14,7 @@ const App = () => {
   const [showModal, setShowModal] = useState(false);
   const [currentInput, setCurrentInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const { caseData, setCaseData } = useCase();
 
   const prompt = `Generate a fictional murder mystery case as a JSON object.
 
@@ -45,10 +49,18 @@ Instructions:
 
       if (text) {
         text = text.replace(/```json|```/g, "").trim();
+        text = text
+        .replace(/```json|```/g, "")
+        .replace(/^\s*[\r\n]/gm, "")
+        .trim();
+        const userId = null; // Replace with actual user ID if needed
         try {
           const parsed = JSON.parse(text);
           parsed.suspects = parsed.suspects.map((s) => ({ ...s, chat: [] }));
           parsed.witnesses = parsed.witnesses?.map((w) => ({ ...w, chat: [] })) || [];
+
+          const docId = await storeCaseInFirestore(parsed, userId);
+          parsed.id = docId;
           setCaseData(parsed);
         } catch (err) {
           console.error("Parsing error:", err);
@@ -109,6 +121,12 @@ Instructions:
       if (reply) {
         character.chat.push({ role: "model", content: reply });
         setCaseData({ ...updated });
+        if (caseData.id) {
+          await updateCaseChat(caseData.id, {
+            suspects: updated.suspects,
+            witnesses: updated.witnesses
+          });
+        }
       }
     } catch (err) {
       console.error("Chat error:", err);
