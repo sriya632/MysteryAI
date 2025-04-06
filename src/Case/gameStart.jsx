@@ -259,20 +259,21 @@ const GameStart = () => {
 
     let context = await getRelevantContext(caseData.id, currentInput);
 
-      const finalPrompt = `
-      ${viewing === "suspect"
-        ? `You are ${character.name}, a suspect in a murder case.`
-        : `You are ${character.name}, a witness in a murder case.`}
-      Respond in character using concise, realistic dialogue (2–4 lines max).
-      
-      Context from the case:
-      ${context || "None available"}
-      
-      Chat history:
-      ${dialog}
-      
-      ${character.name}:
-      `;
+    const finalPrompt = `
+        ${viewing === "suspect" ? `You are ${character.name}, a suspect in a murder case.` 
+                                : `You are ${character.name}, a witness in a murder case.`}
+        Context from the case:
+        ${context || "None available"}
+        Chat history:
+        ${dialog}
+        ${character.name}:
+        With the context and the role assigned to you and your chat history, respond according to your character's facts
+        and personality. If you are the culprit, make sure to come up with convincing lies to mislead the investigator and try to stick
+        to your alibi otherwise it would be very easy to catch him. Do not answer in long paragraphs, try to keep it as concise as possible
+        with a soft limit of 35 words. Each character can at most answer 5 questions so make sure that the characters do not get stuck in a
+        loop and can reveal at most the observation. Also, provide user with 1 suggested very generic short detective question idea for beginners (in 5 words or less) based on the chat context that would aid them in extracting more useful information.
+        Separate the response and hint with @ symbol and give plain text for both without any labels.`;
+
       
     try {
       const res = await fetch(
@@ -288,9 +289,10 @@ const GameStart = () => {
 
       const data = await res.json();
       const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      const parts = reply ? reply.split("@") : [];
 
       if (reply) {
-        character.chat.push({ role: "model", content: reply });
+        character.chat.push({ role: "model", parts });
         setCaseData({ ...updated });
         if (caseData.id) {
           await updateCaseChat(caseData.id, {
@@ -468,7 +470,18 @@ const GameStart = () => {
                         <div className={`max-w-xs px-4 py-2 rounded-2xl ${
                           msg.role === "user" ? "bg-purple-600 text-white" : "bg-gray-300 text-black"
                         }`}>
-                          {msg.content}
+                          {msg.role === "model" && msg.parts ? (
+                            <div>
+                              <div className="font-normal">{msg.parts[0]}</div>
+                              {msg.parts[1] && (
+                                <div className="mt-2 font-italic text-xs italic text-gray-600">
+                                  <span className="font-bold">Hint:</span> {msg.parts[1]}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div>{msg.content}</div>
+                          )}
                         </div>
                       </div>
                     ))}
