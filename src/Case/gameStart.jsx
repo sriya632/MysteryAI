@@ -2,9 +2,14 @@ import React, { useState } from "react";
 import Accusation from "./accusation";
 import { useCase } from "./useCase";
 import {storeCaseInFirestore,updateCaseChat } from "../../Firebase/storeCase.jsx" // Adjust the import path as necessary
+import { storeEmbeddingsForCase } from "./../../Firebase/storeEmbeddings";
+import { cosineSimilarity } from "../../RAG/cosineUtils";
+import { getRelevantContext } from "./../../RAG/getRelaventContext"; // Adjust the import 
+import {getEmbeddingFromHF} from "./../../RAG/generateEmbeddingHF"; // Adjust the import path as necessary
+import {queryAllCaseSummaries} from "./../../RAG/queryAllCaseSummaries"
+import { storeOverviewEmbedding } from "../../RAG/storeOverviewEmbedding";
 
 const API_KEY = "AIzaSyA63dd1fVVukrf0mvmfFo8DoRH5vpzigPs" // Replace with your actual key
-
 
 
 const App = () => {
@@ -27,65 +32,118 @@ const App = () => {
   };
   const { caseData, setCaseData } = useCase();
 
-  const prompt = `Generate a fictional murder mystery case as a JSON object.
+  const randomSettings = [
+    "abandoned amusement park", "deep sea research lab", "underground speakeasy",
+    "snowbound mountain lodge", "suburban block party", "VR gaming expo",
+    "desert music festival", "private jet", "haunted mansion"
+  ];
+  
+  const randomEvents = [
+    "mask reveal ceremony", "talent show", "blizzard lockdown", "power outage",
+    "silent auction", "fire drill", "art unveiling", "company IPO party"
+  ];
+  
+  const randomMurderMethods = [
+    "poisoned drink", "electrocuted in bath", "stage light rig collapse", "sabotaged harness",
+    "crossbow from behind curtain", "snake venom", "laced perfume"
+  ];
+  
+  const seed = Date.now();
+  
+  const prompt = JSON.stringify({
+    instructions: "You are an expert mystery storyteller. Generate a complex and surprising murder mystery in a unique setting.",
+    structure: {
+      setting: randomSettings[Math.floor(Math.random() * randomSettings.length)],
+      event: randomEvents[Math.floor(Math.random() * randomEvents.length)],
+      murder_method: randomMurderMethods[Math.floor(Math.random() * randomMurderMethods.length)],
+      case_title: "Generate a short creative title.",
+      case_overview: "Write an intriguing 3–5 line summary using the setting, event, and method.",
+      suspects: "Include 2–4 suspects. Only one is the murderer and is lying. Each must have unique motives, personalities, and styles.",
+      witnesses: "Include 0–2 witnesses. They are always truthful but speak vaguely.",
+      variation: "Do not repeat names, motives, or structure from prior examples."
+    },
+    output_format: "{ \"case_title\": \"...\", \"case_overview\": \"...\", \"difficulty\": \"...\", \"suspects\": [ { \"name\": \"...\", \"gender\": \"...\", \"age\": ..., \"clothing\": \"...\", \"personality\": \"...\", \"background\": \"...\", \"alibi\": \"...\", \"is_murderer\": true/false } ], \"witnesses\": [ { \"name\": \"...\", \"description\": \"age, profession, and location during the crime\", \"observation\": \"What they saw or heard, vague but truthful\", \"note\": \"Contextual detail that subtly supports or contradicts a suspect's alibi\" } ] }",
+    difficulty: "Medium",
+    randomness: "Use a timestamp-based seed to increase randomness.",
+    seed: seed
+  });;
 
-Instructions:
-- Include a "case_title", "case_overview", "difficulty", "suspects", and "witnesses"
-- 1 murder, 1 murderer among 2–4 suspects
-- Each suspect has: name, gender, age, clothing, personality, background, alibi, is_murderer
-- Include 2 witnesses: name, description, observation (should not point too obviously to murderer)
-- Difficulty: Medium
-- Make all characters feel real, with unique voices and motivations
-- Format the output as raw JSON (do not wrap in markdown or backticks)`;
+  
 
-  const callGemini = async () => {
-    setLoading(true);
-    setError(null);
-    setCaseData(null);
+  const extractSummaryForEmbedding = (caseData) => {
+    return `${caseData.case_title}. ${caseData.case_overview}`
+      .replace(/\n/g, " ")         // remove newlines
+      .replace(/"/g, "'")          // replace double quotes with single
+      .replace(/\\+/g, " ")        // remove backslashes
+      .slice(0, 512);              // keep it within a safe limit
+  };
 
+const callGemini = async () => {
+  let attempts = 0;
+  let found = false;
+  let finalParsed = null;
+  let summary = null;
+  let newEmbedding = null;
+  
+  while (attempts < 5 && !found) {
+    attempts++;
+  
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+        }),
+      }
+    );
+  
+    const data = await res.json();
+    let text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  
+    if (!text) continue;
+  
     try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-          }),
-        }
-      );
-
-      const data = await res.json();
-      let text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-      if (text) {
-        text = text.replace(/```json|```/g, "").trim();
-        text = text
-        .replace(/```json|```/g, "")
-        .replace(/^\s*[\r\n]/gm, "")
-        .trim();
-        const userId = null; // Replace with actual user ID if needed
-        try {
-          const parsed = JSON.parse(text);
-          parsed.suspects = parsed.suspects.map((s) => ({ ...s, chat: [] }));
-          parsed.witnesses = parsed.witnesses?.map((w) => ({ ...w, chat: [] })) || [];
-
-          const docId = await storeCaseInFirestore(parsed, userId);
-          parsed.id = docId;
-          setCaseData(parsed);
-        } catch (err) {
-          console.error("Parsing error:", err);
-          setError("Failed to parse Gemini response as JSON.");
-        }
-      } else {
-        setError("No response or invalid format from Gemini.");
+      text = text.replace(/```json|```/g, "").trim();
+      text = text.replace(/^\s*[\r\n]/gm, "").trim();
+      const parsed = JSON.parse(text);
+      summary = extractSummaryForEmbedding(parsed);
+      newEmbedding = await getEmbeddingFromHF(summary);
+      // 🔍 Get all past embeddings
+      const existingSummaries = await queryAllCaseSummaries();
+      const tooSimilar = existingSummaries.some((entry) => {
+        const sim = cosineSimilarity(newEmbedding, entry.embedding);
+        return sim > 0.91; // tweak threshold
+      });
+  
+      if (!tooSimilar) {
+        found = true;
+        finalParsed = parsed;
+        finalParsed.embedding = newEmbedding;
       }
     } catch (err) {
-      console.error("Error calling Gemini:", err);
-      setError("Failed to generate case.");
+      console.error("Parse or embed error:", err);
     }
-
+  }
+  if (!finalParsed) {
+    setError("Could not generate a unique case after multiple tries.");
     setLoading(false);
+    return;
+  }
+  
+  const userId = null;
+  finalParsed.suspects = finalParsed.suspects.map((s) => ({ ...s, chat: [] }));
+  finalParsed.witnesses = finalParsed.witnesses?.map((w) => ({ ...w, chat: [] })) || [];
+  
+  const docId = await storeCaseInFirestore(finalParsed, userId);
+  finalParsed.id = docId;
+  await storeOverviewEmbedding(docId, summary, newEmbedding);
+  await storeEmbeddingsForCase(finalParsed, docId);
+
+  setCaseData(finalParsed);
+  setShowModal(false);
+  setSelectedIndex(null);  
   };
 
   const sendMessageToCharacter = async () => {
@@ -99,10 +157,10 @@ Instructions:
     setCaseData(updated);
     setChatLoading(true);
 
-    const intro =
-      viewing === "suspect"
-        ? `You are ${character.name}, a suspect in a murder case. Respond as yourself.\n\n`
-        : `You are ${character.name}, a witness in a murder case. Respond as yourself.\n\n`;
+    //const intro =
+      //viewing === "suspect"
+        //? `You are ${character.name}, a suspect in a murder case. Respond as yourself.\n\n`
+        //: `You are ${character.name}, a witness in a murder case. Respond as yourself.\n\n`;
 
     const dialog = character.chat
       .map((msg) =>
@@ -112,8 +170,23 @@ Instructions:
       )
       .join("\n");
 
-    const finalPrompt = intro + dialog + `\n${character.name}:`;
+      let context = await getRelevantContext(caseData.id, currentInput);
 
+      const finalPrompt = `
+      ${viewing === "suspect"
+        ? `You are ${character.name}, a suspect in a murder case.`
+        : `You are ${character.name}, a witness in a murder case.`}
+      Respond in character.
+      
+      Context from the case:
+      ${context || "None available"}
+      
+      Chat history:
+      ${dialog}
+      
+      ${character.name}:
+      `;
+      
     try {
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
@@ -138,6 +211,12 @@ Instructions:
             witnesses: updated.witnesses
           });
         }
+        if (caseData.id) {
+          await updateCaseChat(caseData.id, {
+            suspects: updated.suspects,
+            witnesses: updated.witnesses
+          });
+        }
       }
     } catch (err) {
       console.error("Chat error:", err);
@@ -155,7 +234,7 @@ Instructions:
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6 font-mono">
       <h1 className="text-3xl font-bold text-center text-purple-300 mb-6">🕵️ Murder Mystery</h1>
-
+  
       <div className="flex justify-center mb-10">
         <button
           onClick={callGemini}
@@ -165,9 +244,9 @@ Instructions:
           {loading ? "Generating..." : "Generate Case"}
         </button>
       </div>
-
+  
       {error && <p className="text-red-400 text-center mb-4">{error}</p>}
-
+  
       {caseData && (
         <>
           <div className="max-w-3xl mx-auto bg-slate-800 p-8 rounded-xl border border-purple-900 shadow-xl mb-10">
@@ -227,7 +306,7 @@ Instructions:
           <Accusation caseData={caseData} onResetGame={handleResetGame} />
           </>
       )}
-
+  
       {/* Modal */}
       {showModal && selectedIndex !== null && caseData?.[viewing === "suspect" ? "suspects" : "witnesses"]?.[selectedIndex] && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 backdrop-blur-sm">
@@ -238,7 +317,7 @@ Instructions:
             >
               ✖
             </button>
-
+  
             {(() => {
               const character = caseData[viewing === "suspect" ? "suspects" : "witnesses"][selectedIndex];
               return (
@@ -255,23 +334,19 @@ Instructions:
                         </p>
                       ))}
                   </div>
-
+  
                   <div className="bg-slate-700 h-64 rounded p-3 overflow-y-auto text-sm space-y-3">
                     {character.chat.map((msg, idx) => (
                       <div key={idx} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                        <div
-                          className={`max-w-xs px-4 py-2 rounded-2xl ${
-                            msg.role === "user"
-                              ? "bg-purple-600 text-white"
-                              : "bg-gray-300 text-black"
-                          }`}
-                        >
+                        <div className={`max-w-xs px-4 py-2 rounded-2xl ${
+                          msg.role === "user" ? "bg-purple-600 text-white" : "bg-gray-300 text-black"
+                        }`}>
                           {msg.content}
                         </div>
                       </div>
                     ))}
                   </div>
-
+  
                   <div className="flex mt-4 gap-2">
                     <input
                       type="text"
@@ -297,10 +372,6 @@ Instructions:
       )}
     </div>
   );
-};
+}
 
 export default App;
-
-
-
-
