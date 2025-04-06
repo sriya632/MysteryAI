@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import Accusation from "./accusation";
 import { useCase } from "./useCase";
 import {storeCaseInFirestore,updateCaseChat } from "../../Firebase/storeCase.jsx" // Adjust the import path as necessary
+import Timer from "./timer.jsx";
+
 import { storeEmbeddingsForCase } from "./../../Firebase/storeEmbeddings";
 import { cosineSimilarity } from "../../RAG/cosineUtils";
 import { getRelevantContext } from "./../../RAG/getRelaventContext"; // Adjust the import 
@@ -20,6 +22,7 @@ const App = () => {
   const [showModal, setShowModal] = useState(false);
   const [currentInput, setCurrentInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  
 
   const getGenderBasedAvatar = (username, gender) => {
     const formattedUsername = encodeURIComponent(username);
@@ -32,6 +35,38 @@ const App = () => {
   };
   const { caseData, setCaseData } = useCase();
 
+  const [startTime, setStartTime] = useState(null);
+  const [totalTimeTaken, setTotalTimeTaken] = useState(0);
+  const [isTimerPaused, setIsTimerPaused] = useState(false);
+  const [confirmQuitModal, setConfirmQuitModal] = useState(false);
+
+  const handleQuit = () => {
+    setConfirmQuitModal(true);
+  };
+  const handleTimerEnd = () => {
+    // Logic for when timer ends
+    alert("Time's up! Game over.");
+    handleGameEnd(false);
+  };
+  const handleTimePause = () => {
+    setIsTimerPaused(true);
+    const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+    setTotalTimeTaken(prev => prev + elapsedTime);
+  };
+
+  const handleTimeResume = () => {
+    setIsTimerPaused(false);
+    setStartTime(Date.now());
+  };
+  const handleGameEnd = (won) => {
+    setCaseData(null);
+    setSelectedIndex(null);
+    setShowModal(false);
+    setStartTime(null);
+    setTotalTimeTaken(0);
+    setIsTimerPaused(false);
+    // Optionally navigate back or show score
+  };
   const randomSettings = [
     "abandoned amusement park", "deep sea research lab", "underground speakeasy",
     "snowbound mountain lodge", "suburban block party", "VR gaming expo",
@@ -234,6 +269,26 @@ const callGemini = async () => {
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6 font-mono">
       <h1 className="text-3xl font-bold text-center text-purple-300 mb-6">🕵️ Murder Mystery</h1>
+      <div className="flex items-center space-x-4">
+          {/* Timer */}
+          {caseData && (
+            <Timer 
+              onTimerEnd={handleTimerEnd}
+              onTimePause={handleTimePause}
+              onTimeResume={handleTimeResume}
+            />
+          )}
+
+          {/* Quit Button */}
+          {caseData && (
+            <button 
+              onClick={handleQuit}
+              className="px-3 py-1 bg-red-600 hover:bg-red-500 rounded text-white"
+            >
+              Quit
+            </button>
+          )}
+          </div>
   
       <div className="flex justify-center mb-10">
         <button
@@ -370,7 +425,33 @@ const callGemini = async () => {
           </div>
         </div>
       )}
+      {confirmQuitModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 backdrop-blur-sm">
+    <div className="bg-slate-800 border border-purple-900 p-8 rounded-xl shadow-2xl w-full max-w-md text-center">
+      <h2 className="text-xl text-purple-200 font-semibold mb-4">Quit Game?</h2>
+      <p className="text-white mb-6">Are you sure you want to quit the game?</p>
+      <div className="flex justify-center gap-4">
+        <button
+          onClick={() => {
+            setConfirmQuitModal(false);
+            handleGameEnd(false); // your existing logic
+          }}
+          className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded text-white"
+        >
+          Yes, Quit
+        </button>
+        <button
+          onClick={() => setConfirmQuitModal(false)}
+          className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded text-white"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
+  </div>
+)}
+    </div>
+    
   );
 }
 
