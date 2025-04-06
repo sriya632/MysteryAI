@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Accusation from "./accusation";
 import { useCase } from "./useCase";
 import { storeCaseInFirestore, updateCaseChat } from "./../../Firebase/storeCase"; // Adjust the import path as necessary
 
@@ -14,6 +15,16 @@ const App = () => {
   const [showModal, setShowModal] = useState(false);
   const [currentInput, setCurrentInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+
+  const getGenderBasedAvatar = (username, gender) => {
+    const formattedUsername = encodeURIComponent(username);
+    
+    if (gender && gender.toLowerCase() === 'female') {
+      return `https://avatar.iran.liara.run/public/girl?username=${formattedUsername}`;
+    } else {
+      return `https://avatar.iran.liara.run/public/boy?username=${formattedUsername}`;
+    }
+  };
   const { caseData, setCaseData } = useCase();
 
   const prompt = `Generate a fictional murder mystery case as a JSON object.
@@ -135,7 +146,12 @@ Instructions:
     setCurrentInput("");
     setChatLoading(false);
   };
-
+  const handleResetGame = () => {
+    setCaseData(null);
+    setSelectedIndex(null);
+    setShowModal(false);
+    callGemini(); // Generate a new case
+  };
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6 font-mono">
       <h1 className="text-3xl font-bold text-center text-purple-300 mb-6">🕵️ Murder Mystery</h1>
@@ -160,38 +176,56 @@ Instructions:
             <p className="text-white">{caseData.case_overview}</p>
           </div>
 
-          <div className="flex justify-center gap-4 flex-wrap mb-6">
+
+          <div className="flex justify-center gap-6 flex-wrap mb-8">
+            <h2> Interact with the characters to know more!</h2>
+          </div>
+
+          <div className="flex justify-center gap-6 flex-wrap mb-8">
             {caseData.suspects.map((suspect, idx) => (
-              <button
-                key={idx}
-                onClick={() => {
-                  setSelectedIndex(idx);
-                  setViewing("suspect");
-                  setShowModal(true);
-                }}
-                className="w-20 h-20 rounded-full bg-purple-600 hover:bg-purple-500 text-white text-xl font-bold flex items-center justify-center shadow-lg"
-              >
-                {suspect.name[0]}
-              </button>
+              <div key={idx} className="flex flex-col items-center">
+                <button
+                  onClick={() => {
+                    setSelectedIndex(idx);
+                    setViewing("suspect");
+                    setShowModal(true);
+                  }}
+                  className="w-24 h-24 rounded-full bg-purple-600 hover:bg-purple-500 text-white flex items-center justify-center shadow-lg overflow-hidden p-0 border-2 border-purple-400"
+                >
+                  <img 
+                    src={getGenderBasedAvatar(suspect.name.replace(/\s+/g, ''), suspect.gender)}
+                    alt={`${suspect.name} avatar`}
+                    className="w-full h-full object-cover"
+                  />
+                </button>
+                <span className="mt-2 text-sm text-center text-purple-200">{suspect.name}</span>
+              </div>
             ))}
           </div>
 
-          <div className="flex justify-center gap-4 flex-wrap mb-6">
+          <div className="flex justify-center gap-6 flex-wrap mb-8">
             {caseData.witnesses.map((witness, idx) => (
-              <button
-                key={idx}
-                onClick={() => {
-                  setSelectedIndex(idx);
-                  setViewing("witness");
-                  setShowModal(true);
-                }}
-                className="w-16 h-16 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-lg font-bold flex items-center justify-center shadow-md"
-              >
-                {witness.name[0]}
-              </button>
+              <div key={idx} className="flex flex-col items-center">
+                <button
+                  onClick={() => {
+                    setSelectedIndex(idx);
+                    setViewing("witness");
+                    setShowModal(true);
+                  }}
+                  className="w-24 h-24 rounded-full bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center shadow-md overflow-hidden p-0 border-2 border-blue-400"
+                >
+                  <img 
+                    src={getGenderBasedAvatar(witness.name.replace(/\s+/g, ''), witness.gender)}
+                    alt={`${witness.name} avatar`}
+                    className="w-full h-full object-cover"
+                  />
+                </button>
+                <span className="mt-2 text-sm text-center text-blue-200">{witness.name}</span>
+              </div>
             ))}
           </div>
-        </>
+          <Accusation caseData={caseData} onResetGame={handleResetGame} />
+          </>
       )}
 
       {/* Modal */}
