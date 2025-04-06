@@ -11,11 +11,9 @@ const Accusation = ({ caseData, onResetGame }) => {
         
         if (!accusedName.trim()) return;
         
-        // Find the actual murderer
         const murderer = caseData.suspects.find(suspect => suspect.is_murderer);
         setMurdererName(murderer ? murderer.name : "Unknown");
         
-        // Check if accusation is correct (case insensitive comparison)
         const isMatch = murderer && 
           accusedName.toLowerCase().includes(murderer.name.toLowerCase());
         

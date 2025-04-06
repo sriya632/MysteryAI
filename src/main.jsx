@@ -3,9 +3,9 @@ import ReactDOM from 'react-dom/client'; // Import from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom';
 import './index.css';
 import App from './App';
-import { CaseProvider } from './Case/caseContext'; // Import CaseProvider
+import { CaseProvider } from './Case/caseContext';
 
-const root = ReactDOM.createRoot(document.getElementById('root')); // Use createRoot
+const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
     <BrowserRouter>

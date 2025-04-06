@@ -1,4 +1,3 @@
-// src/Case/useCase.js
 import { useContext } from "react";
 import { CaseContext } from "./caseContext";
 

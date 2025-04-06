@@ -1,4 +1,3 @@
-// src/Case/caseContext.js
 import { createContext, useContext, useState } from "react";
 
 export const CaseContext = createContext();
