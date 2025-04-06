@@ -32,7 +32,6 @@ const App = () => {
   };
   const { caseData, setCaseData } = useCase();
 
-
   const randomSettings = [
     "abandoned amusement park", "deep sea research lab", "underground speakeasy",
     "snowbound mountain lodge", "suburban block party", "VR gaming expo",
@@ -255,38 +254,57 @@ const callGemini = async () => {
             <p className="text-sm text-purple-100 mb-2"><strong>Difficulty:</strong> {caseData.difficulty}</p>
             <p className="text-white">{caseData.case_overview}</p>
           </div>
-  
+
+
           <div className="flex justify-center gap-6 flex-wrap mb-8">
-            <h2 className="text-xl text-purple-200">Interact with the characters to know more!</h2>
+            <h2> Interact with the characters to know more!</h2>
           </div>
-  
+
           <div className="flex justify-center gap-6 flex-wrap mb-8">
-            {[...caseData.suspects.map((person, idx) => ({ ...person, type: "suspect", index: idx })), 
-              ...caseData.witnesses.map((person, idx) => ({ ...person, type: "witness", index: idx }))].map((person, i) => (
-              <div key={i} className="flex flex-col items-center">
+            {caseData.suspects.map((suspect, idx) => (
+              <div key={idx} className="flex flex-col items-center">
                 <button
                   onClick={() => {
-                    setSelectedIndex(person.index);
-                    setViewing(person.type);
+                    setSelectedIndex(idx);
+                    setViewing("suspect");
                     setShowModal(true);
                   }}
-                  className={`w-24 h-24 rounded-full ${person.type === "suspect" ? "bg-purple-600 border-purple-400" : "bg-blue-600 border-blue-400"} hover:opacity-90 text-white flex items-center justify-center shadow-lg overflow-hidden p-0 border-2`}
+                  className="w-24 h-24 rounded-full bg-purple-600 hover:bg-purple-500 text-white flex items-center justify-center shadow-lg overflow-hidden p-0 border-2 border-purple-400"
                 >
                   <img 
-                    src={getGenderBasedAvatar(person.name.replace(/\s+/g, ''), person.gender)}
-                    alt={`${person.name} avatar`}
+                    src={getGenderBasedAvatar(suspect.name.replace(/\s+/g, ''), suspect.gender)}
+                    alt={`${suspect.name} avatar`}
                     className="w-full h-full object-cover"
                   />
                 </button>
-                <span className={`mt-2 text-sm text-center ${person.type === "suspect" ? "text-purple-200" : "text-blue-200"}`}>
-                  {person.name}
-                </span>
+                <span className="mt-2 text-sm text-center text-purple-200">{suspect.name}</span>
               </div>
             ))}
           </div>
-  
+
+          <div className="flex justify-center gap-6 flex-wrap mb-8">
+            {caseData.witnesses.map((witness, idx) => (
+              <div key={idx} className="flex flex-col items-center">
+                <button
+                  onClick={() => {
+                    setSelectedIndex(idx);
+                    setViewing("witness");
+                    setShowModal(true);
+                  }}
+                  className="w-24 h-24 rounded-full bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center shadow-md overflow-hidden p-0 border-2 border-blue-400"
+                >
+                  <img 
+                    src={getGenderBasedAvatar(witness.name.replace(/\s+/g, ''), witness.gender)}
+                    alt={`${witness.name} avatar`}
+                    className="w-full h-full object-cover"
+                  />
+                </button>
+                <span className="mt-2 text-sm text-center text-blue-200">{witness.name}</span>
+              </div>
+            ))}
+          </div>
           <Accusation caseData={caseData} onResetGame={handleResetGame} />
-        </>
+          </>
       )}
   
       {/* Modal */}
