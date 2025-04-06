@@ -211,7 +211,7 @@ const callGemini = async () => {
       ${viewing === "suspect"
         ? `You are ${character.name}, a suspect in a murder case.`
         : `You are ${character.name}, a witness in a murder case.`}
-      Respond in character.
+      Respond in character using concise, realistic dialogue (2–4 lines max).
       
       Context from the case:
       ${context || "None available"}

@@ -1,4 +1,5 @@
 import React, {useState} from "react";
+import { updateCaseWithGuess } from "./../../Firebase/storeCase";
 
 const Accusation = ({ caseData, onResetGame }) => {
     const [accusedName, setAccusedName] = useState("");
@@ -6,7 +7,7 @@ const Accusation = ({ caseData, onResetGame }) => {
     const [isCorrect, setIsCorrect] = useState(false);
     const [murdererName, setMurdererName] = useState("");
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async(e) => {
         e.preventDefault();
         
         if (!accusedName.trim()) return;
@@ -18,7 +19,10 @@ const Accusation = ({ caseData, onResetGame }) => {
         // Check if accusation is correct (case insensitive comparison)
         const isMatch = murderer && 
           accusedName.toLowerCase().includes(murderer.name.toLowerCase());
-        
+          await updateCaseWithGuess(caseData.id, {
+            user_guess: accusedName,
+            guess_correct: isMatch
+          });
         setIsCorrect(isMatch);
         setShowResult(true);
       };
