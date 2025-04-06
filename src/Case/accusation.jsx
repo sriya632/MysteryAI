@@ -1,7 +1,7 @@
 import React, {useState} from "react";
 import { updateCaseWithGuess } from "./../../Firebase/storeCase";
 
-const Accusation = ({ caseData, onResetGame }) => {
+const Accusation = ({ caseData, onResetGame, onSuccessfulSolve }) => {
     const [accusedName, setAccusedName] = useState("");
     const [showResult, setShowResult] = useState(false);
     const [isCorrect, setIsCorrect] = useState(false);
@@ -25,13 +25,20 @@ const Accusation = ({ caseData, onResetGame }) => {
           });
         setIsCorrect(isMatch);
         setShowResult(true);
+        
+        // If the accusation was correct, notify the parent component
+        if (isMatch && onSuccessfulSolve) {
+          onSuccessfulSolve();
+        }
       };
 
       const handleNextGame = () => {
         setAccusedName("");
         setShowResult(false);
         setIsCorrect(false);
-        onResetGame();
+        if (onResetGame) {
+          onResetGame();
+        }
       };
 
       if (showResult) {
@@ -100,6 +107,4 @@ const Accusation = ({ caseData, onResetGame }) => {
       );
     };
     
-
-
 export default Accusation;

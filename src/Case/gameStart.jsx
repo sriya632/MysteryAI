@@ -1,20 +1,21 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Accusation from "./accusation";
 import { useCase } from "./useCase";
-import {storeCaseInFirestore,updateCaseChat } from "../../Firebase/storeCase.jsx" // Adjust the import path as necessary
+import { storeCaseInFirestore, updateCaseChat } from "../../Firebase/storeCase.jsx";
 import Timer from "./timer.jsx";
+import UserStats from "../Stats/UserStats";
+import { isAuthenticated } from "../Auth/Auth";
 
 import { storeEmbeddingsForCase } from "./../../Firebase/storeEmbeddings";
 import { cosineSimilarity } from "../../RAG/cosineUtils";
-import { getRelevantContext } from "./../../RAG/getRelaventContext"; // Adjust the import 
-import {getEmbeddingFromHF} from "./../../RAG/generateEmbeddingHF"; // Adjust the import path as necessary
-import {queryAllCaseSummaries} from "./../../RAG/queryAllCaseSummaries"
+import { getRelevantContext } from "./../../RAG/getRelaventContext"; 
+import { getEmbeddingFromHF } from "./../../RAG/generateEmbeddingHF";
+import { queryAllCaseSummaries } from "./../../RAG/queryAllCaseSummaries";
 import { storeOverviewEmbedding } from "../../RAG/storeOverviewEmbedding";
 
-const API_KEY = "AIzaSyA63dd1fVVukrf0mvmfFo8DoRH5vpzigPs" // Replace with your actual key
+const API_KEY = "AIzaSyA63dd1fVVukrf0mvmfFo8DoRH5vpzigPs";
 
-
-const App = () => {
+const GameStart = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedIndex, setSelectedIndex] = useState(null);
@@ -23,7 +24,6 @@ const App = () => {
   const [currentInput, setCurrentInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   
-
   const getGenderBasedAvatar = (username, gender) => {
     const formattedUsername = encodeURIComponent(username);
     
@@ -33,21 +33,54 @@ const App = () => {
       return `https://avatar.iran.liara.run/public/boy?username=${formattedUsername}`;
     }
   };
+  
   const { caseData, setCaseData } = useCase();
 
-  const [startTime, setStartTime] = useState(null);
+  const [startTime, setStartTime] = useState(Date.now());
   const [totalTimeTaken, setTotalTimeTaken] = useState(0);
   const [isTimerPaused, setIsTimerPaused] = useState(false);
   const [confirmQuitModal, setConfirmQuitModal] = useState(false);
+  const [currentUsername, setCurrentUsername] = useState("");
+
+  // Get current username on component mount
+  useEffect(() => {
+    const currentUser = localStorage.getItem('currentUser');
+    if (currentUser) {
+      const userData = JSON.parse(currentUser);
+      setCurrentUsername(userData.username);
+    }
+  }, []);
+  
+  // Save game stats to localStorage
+  const saveGameStats = (result, timeTaken) => {
+    if (!currentUsername) return;
+    
+    const gameHistory = JSON.parse(localStorage.getItem(`games_${currentUsername}`) || '[]');
+    
+    // Create a new game entry
+    const gameEntry = {
+      caseTitle: caseData?.case_title || "Mystery Case",
+      solved: result,
+      timeTaken: timeTaken,
+      timestamp: new Date().toISOString(),
+      caseId: caseData?.id || null
+    };
+    
+    // Add to history and save
+    gameHistory.push(gameEntry);
+    localStorage.setItem(`games_${currentUsername}`, JSON.stringify(gameHistory));
+  };
 
   const handleQuit = () => {
     setConfirmQuitModal(true);
   };
+  
   const handleTimerEnd = () => {
     // Logic for when timer ends
     alert("Time's up! Game over.");
     handleGameEnd(false);
   };
+  
   const handleTimePause = () => {
     setIsTimerPaused(true);
     const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
@@ -58,15 +91,30 @@ const App = () => {
     setIsTimerPaused(false);
     setStartTime(Date.now());
   };
-  const handleGameEnd = (won) => {
+  
+  const handleGameEnd = (won, finalTime) => {
+    // Calculate total time if not provided
+    const gameTime = finalTime || (isTimerPaused 
+      ? totalTimeTaken 
+      : totalTimeTaken + Math.floor((Date.now() - startTime) / 1000));
+    
+    // Save game stats
+    saveGameStats(won, gameTime);
+    
+    // Reset game state
     setCaseData(null);
     setSelectedIndex(null);
     setShowModal(false);
-    setStartTime(null);
+    setStartTime(Date.now());
     setTotalTimeTaken(0);
     setIsTimerPaused(false);
-    // Optionally navigate back or show score
   };
+  
+  // Handle successful case solve (called from Accusation component)
+  const handleSuccessfulSolve = (time) => {
+    handleGameEnd(true, time);
+  };
+
   const randomSettings = [
     "abandoned amusement park", "deep sea research lab", "underground speakeasy",
     "snowbound mountain lodge", "suburban block party", "VR gaming expo",
@@ -101,84 +149,93 @@ const App = () => {
     difficulty: "Medium",
     randomness: "Use a timestamp-based seed to increase randomness.",
     seed: seed
-  });;
-
-  
+  });
 
   const extractSummaryForEmbedding = (caseData) => {
     return `${caseData.case_title}. ${caseData.case_overview}`
-      .replace(/\n/g, " ")         // remove newlines
-      .replace(/"/g, "'")          // replace double quotes with single
-      .replace(/\\+/g, " ")        // remove backslashes
-      .slice(0, 512);              // keep it within a safe limit
+      .replace(/\n/g, " ")
+      .replace(/"/g, "'")
+      .replace(/\\+/g, " ")
+      .slice(0, 512);
   };
 
-const callGemini = async () => {
-  let attempts = 0;
-  let found = false;
-  let finalParsed = null;
-  let summary = null;
-  let newEmbedding = null;
-  
-  while (attempts < 5 && !found) {
-    attempts++;
-  
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-        }),
+  const callGemini = async () => {
+    setLoading(true);
+    let attempts = 0;
+    let found = false;
+    let finalParsed = null;
+    let summary = null;
+    let newEmbedding = null;
+    
+    while (attempts < 5 && !found) {
+      attempts++;
+    
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+            }),
+          }
+        );
+      
+        const data = await res.json();
+        let text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+        if (!text) continue;
+      
+        text = text.replace(/```json|```/g, "").trim();
+        text = text.replace(/^\s*[\r\n]/gm, "").trim();
+        const parsed = JSON.parse(text);
+        summary = extractSummaryForEmbedding(parsed);
+        newEmbedding = await getEmbeddingFromHF(summary);
+        
+        // Get all past embeddings
+        const existingSummaries = await queryAllCaseSummaries();
+        const tooSimilar = existingSummaries.some((entry) => {
+          const sim = cosineSimilarity(newEmbedding, entry.embedding);
+          return sim > 0.91; // tweak threshold
+        });
+      
+        if (!tooSimilar) {
+          found = true;
+          finalParsed = parsed;
+          finalParsed.embedding = newEmbedding;
+        }
+      } catch (err) {
+        console.error("Parse or embed error:", err);
       }
-    );
-  
-    const data = await res.json();
-    let text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  
-    if (!text) continue;
-  
-    try {
-      text = text.replace(/```json|```/g, "").trim();
-      text = text.replace(/^\s*[\r\n]/gm, "").trim();
-      const parsed = JSON.parse(text);
-      summary = extractSummaryForEmbedding(parsed);
-      newEmbedding = await getEmbeddingFromHF(summary);
-      // 🔍 Get all past embeddings
-      const existingSummaries = await queryAllCaseSummaries();
-      const tooSimilar = existingSummaries.some((entry) => {
-        const sim = cosineSimilarity(newEmbedding, entry.embedding);
-        return sim > 0.91; // tweak threshold
-      });
-  
-      if (!tooSimilar) {
-        found = true;
-        finalParsed = parsed;
-        finalParsed.embedding = newEmbedding;
-      }
-    } catch (err) {
-      console.error("Parse or embed error:", err);
     }
-  }
-  if (!finalParsed) {
-    setError("Could not generate a unique case after multiple tries.");
-    setLoading(false);
-    return;
-  }
-  
-  const userId = null;
-  finalParsed.suspects = finalParsed.suspects.map((s) => ({ ...s, chat: [] }));
-  finalParsed.witnesses = finalParsed.witnesses?.map((w) => ({ ...w, chat: [] })) || [];
-  
-  const docId = await storeCaseInFirestore(finalParsed, userId);
-  finalParsed.id = docId;
-  await storeOverviewEmbedding(docId, summary, newEmbedding);
-  await storeEmbeddingsForCase(finalParsed, docId);
+    
+    if (!finalParsed) {
+      setError("Could not generate a unique case after multiple tries.");
+      setLoading(false);
+      return;
+    }
+    
+    const userId = currentUsername || null;
+    finalParsed.suspects = finalParsed.suspects.map((s) => ({ ...s, chat: [] }));
+    finalParsed.witnesses = finalParsed.witnesses?.map((w) => ({ ...w, chat: [] })) || [];
+    
+    try {
+      const docId = await storeCaseInFirestore(finalParsed, userId);
+      finalParsed.id = docId;
+      await storeOverviewEmbedding(docId, summary, newEmbedding);
+      await storeEmbeddingsForCase(finalParsed, docId);
+    } catch (error) {
+      console.error("Error storing case:", error);
+    }
 
-  setCaseData(finalParsed);
-  setShowModal(false);
-  setSelectedIndex(null);  
+    setCaseData(finalParsed);
+    setShowModal(false);
+    setSelectedIndex(null);
+    setStartTime(Date.now());
+    setTotalTimeTaken(0);
+    setIsTimerPaused(false);
+    setLoading(false);
   };
 
   const sendMessageToCharacter = async () => {
@@ -192,11 +249,6 @@ const callGemini = async () => {
     setCaseData(updated);
     setChatLoading(true);
 
-    //const intro =
-      //viewing === "suspect"
-        //? `You are ${character.name}, a suspect in a murder case. Respond as yourself.\n\n`
-        //: `You are ${character.name}, a witness in a murder case. Respond as yourself.\n\n`;
-
     const dialog = character.chat
       .map((msg) =>
         msg.role === "user"
@@ -205,7 +257,7 @@ const callGemini = async () => {
       )
       .join("\n");
 
-      let context = await getRelevantContext(caseData.id, currentInput);
+    let context = await getRelevantContext(caseData.id, currentInput);
 
       const finalPrompt = `
       ${viewing === "suspect"
@@ -246,12 +298,6 @@ const callGemini = async () => {
             witnesses: updated.witnesses
           });
         }
-        if (caseData.id) {
-          await updateCaseChat(caseData.id, {
-            suspects: updated.suspects,
-            witnesses: updated.witnesses
-          });
-        }
       }
     } catch (err) {
       console.error("Chat error:", err);
@@ -260,45 +306,60 @@ const callGemini = async () => {
     setCurrentInput("");
     setChatLoading(false);
   };
+  
   const handleResetGame = () => {
     setCaseData(null);
     setSelectedIndex(null);
     setShowModal(false);
     callGemini(); // Generate a new case
   };
+  
+  // Redirect if not logged in
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      window.location.href = '/auth';
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6 font-mono">
       <h1 className="text-3xl font-bold text-center text-purple-300 mb-6">🕵️ Murder Mystery</h1>
-      <div className="flex items-center space-x-4">
-          {/* Timer */}
-          {caseData && (
-            <Timer 
-              onTimerEnd={handleTimerEnd}
-              onTimePause={handleTimePause}
-              onTimeResume={handleTimeResume}
-            />
-          )}
+      
+      {!caseData && <UserStats />}
+      
+      <div className="flex items-center space-x-4 mb-4">
+        {/* Timer */}
+        {caseData && (
+          <Timer 
+            onTimerEnd={handleTimerEnd}
+            onTimePause={handleTimePause}
+            onTimeResume={handleTimeResume}
+          />
+        )}
 
-          {/* Quit Button */}
-          {caseData && (
-            <button 
-              onClick={handleQuit}
-              className="px-3 py-1 bg-red-600 hover:bg-red-500 rounded text-white"
-            >
-              Quit
-            </button>
-          )}
-          </div>
-  
-      <div className="flex justify-center mb-10">
-        <button
-          onClick={callGemini}
-          disabled={loading}
-          className="px-6 py-3 bg-purple-600 rounded-lg hover:bg-purple-500 disabled:opacity-50"
-        >
-          {loading ? "Generating..." : "Generate Case"}
-        </button>
+        {/* Quit Button */}
+        {caseData && (
+          <button 
+            onClick={handleQuit}
+            className="px-3 py-1 bg-red-600 hover:bg-red-500 rounded text-white"
+          >
+            Quit
+          </button>
+        )}
       </div>
+  
+      {/* Only show Generate Case button when no case is active */}
+      {!caseData && (
+        <div className="flex justify-center mb-10">
+          <button
+            onClick={callGemini}
+            disabled={loading}
+            className="px-6 py-3 bg-purple-600 rounded-lg hover:bg-purple-500 disabled:opacity-50"
+          >
+            {loading ? "Generating..." : "Generate Case"}
+          </button>
+        </div>
+      )}
   
       {error && <p className="text-red-400 text-center mb-4">{error}</p>}
   
@@ -310,9 +371,8 @@ const callGemini = async () => {
             <p className="text-white">{caseData.case_overview}</p>
           </div>
 
-
           <div className="flex justify-center gap-6 flex-wrap mb-8">
-            <h2> Interact with the characters to know more!</h2>
+            <h2>Interact with the characters to know more!</h2>
           </div>
 
           <div className="flex justify-center gap-6 flex-wrap mb-8">
@@ -358,8 +418,20 @@ const callGemini = async () => {
               </div>
             ))}
           </div>
-          <Accusation caseData={caseData} onResetGame={handleResetGame} />
-          </>
+          
+          <Accusation 
+            caseData={caseData} 
+            onResetGame={handleResetGame} 
+            onSuccessfulSolve={() => {
+              // Calculate total time
+              const totalTime = isTimerPaused 
+                ? totalTimeTaken 
+                : totalTimeTaken + Math.floor((Date.now() - startTime) / 1000);
+                
+              handleSuccessfulSolve(totalTime);
+            }} 
+          />
+        </>
       )}
   
       {/* Modal */}
@@ -425,34 +497,34 @@ const callGemini = async () => {
           </div>
         </div>
       )}
+      
       {confirmQuitModal && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 backdrop-blur-sm">
-    <div className="bg-slate-800 border border-purple-900 p-8 rounded-xl shadow-2xl w-full max-w-md text-center">
-      <h2 className="text-xl text-purple-200 font-semibold mb-4">Quit Game?</h2>
-      <p className="text-white mb-6">Are you sure you want to quit the game?</p>
-      <div className="flex justify-center gap-4">
-        <button
-          onClick={() => {
-            setConfirmQuitModal(false);
-            handleGameEnd(false); // your existing logic
-          }}
-          className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded text-white"
-        >
-          Yes, Quit
-        </button>
-        <button
-          onClick={() => setConfirmQuitModal(false)}
-          className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded text-white"
-        >
-          Cancel
-        </button>
-      </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 backdrop-blur-sm">
+          <div className="bg-slate-800 border border-purple-900 p-8 rounded-xl shadow-2xl w-full max-w-md text-center">
+            <h2 className="text-xl text-purple-200 font-semibold mb-4">Quit Game?</h2>
+            <p className="text-white mb-6">Are you sure you want to quit the game?</p>
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={() => {
+                  setConfirmQuitModal(false);
+                  handleGameEnd(false); // Quit without solving the case
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded text-white"
+              >
+                Yes, Quit
+              </button>
+              <button
+                onClick={() => setConfirmQuitModal(false)}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded text-white"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  </div>
-)}
-    </div>
-    
   );
-}
+};
 
-export default App;
+export default GameStart;
