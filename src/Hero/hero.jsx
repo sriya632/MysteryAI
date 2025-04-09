@@ -1,24 +1,19 @@
+// src/Hero/hero.jsx
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { isAuthenticated } from '../Auth/Auth';
+import { onAuthStateChange } from '../../Firebase/userAuth';
 
 function Hero() {
   const navigate = useNavigate();
-  const [loggedIn, setLoggedIn] = useState(isAuthenticated());
+  const [loggedIn, setLoggedIn] = useState(false);
   
   useEffect(() => {
-    // Update logged in status when component mounts
-    setLoggedIn(isAuthenticated());
+    // Update logged in status when auth state changes
+    const unsubscribe = onAuthStateChange((user) => {
+      setLoggedIn(!!user);
+    });
     
-    // Listen for storage events (login/logout in other tabs)
-    const handleStorageChange = () => {
-      setLoggedIn(isAuthenticated());
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-    };
+    return () => unsubscribe();
   }, []);
 
   const handlePlayGame = () => {

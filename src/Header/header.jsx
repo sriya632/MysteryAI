@@ -1,27 +1,22 @@
+// src/Header/header.jsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { isAuthenticated, logout, getUsername } from '../Auth/Auth';
+import { useNavigate } from 'react-router-dom';
+import { auth, onAuthStateChange, logoutUser } from '../../Firebase/userAuth';
 
 function Header() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const [loggedIn, setLoggedIn] = useState(isAuthenticated());
-  const [username, setUsername] = useState(getUsername());
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [username, setUsername] = useState('');
 
-  // Update auth state when location changes or local storage changes
+  // Update auth state when auth state changes
   useEffect(() => {
-    const checkAuth = () => {
-      setLoggedIn(isAuthenticated());
-      setUsername(getUsername());
-    };
-
-    checkAuth();
-    window.addEventListener('storage', checkAuth);
+    const unsubscribe = onAuthStateChange((user) => {
+      setLoggedIn(!!user);
+      setUsername(user ? user.displayName : '');
+    });
     
-    return () => {
-      window.removeEventListener('storage', checkAuth);
-    };
-  }, [location.pathname]);
+    return () => unsubscribe();
+  }, []);
 
   const handleAuthClick = () => {
     if (loggedIn) {
@@ -31,8 +26,9 @@ function Header() {
     }
   };
 
-  const handleLogout = () => {
-    logout(navigate);
+  const handleLogout = async () => {
+    await logoutUser();
+    navigate('/');
   };
 
   return (
@@ -55,7 +51,6 @@ function Header() {
         
         {loggedIn ? (
           <div className="flex gap-3">
-            
             <button 
               onClick={handleLogout}
               className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-md transition-colors text-white"

@@ -5,6 +5,9 @@ import { storeCaseInFirestore, updateCaseChat } from "../../Firebase/storeCase.j
 import Timer from "./timer.jsx";
 import UserStats from "../Stats/UserStats";
 import { isAuthenticated } from "../Auth/Auth";
+import { auth, db } from '../../Firebase/userAuth';
+import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from 'firebase/firestore';
+
 
 import { storeEmbeddingsForCase } from "./../../Firebase/storeEmbeddings";
 import { cosineSimilarity } from "../../RAG/cosineUtils";
@@ -52,24 +55,32 @@ const GameStart = () => {
   }, []);
   
   // Save game stats to localStorage
-  const saveGameStats = (result, timeTaken) => {
-    if (!currentUsername) return;
+  const saveGameStats = async(result, timeTaken) => {
     
-    const gameHistory = JSON.parse(localStorage.getItem(`games_${currentUsername}`) || '[]');
-    
-    // Create a new game entry
-    const gameEntry = {
+    if (!auth.currentUser) return;
+  
+  try {
+    // Save game details to userGames collection
+    await addDoc(collection(db, "userGames"), {
+      userId: auth.currentUser.uid,
       caseTitle: caseData?.case_title || "Mystery Case",
       solved: result,
       timeTaken: timeTaken,
-      timestamp: new Date().toISOString(),
+      timestamp: serverTimestamp(),
       caseId: caseData?.id || null
-    };
+    });
     
-    // Add to history and save
-    gameHistory.push(gameEntry);
-    localStorage.setItem(`games_${currentUsername}`, JSON.stringify(gameHistory));
-  };
+    // Create a new game entry
+    const userRef = doc(db, "userDetails", auth.currentUser.uid);
+    await updateDoc(userRef, {
+      "stats.gamesPlayed": increment(1),
+      "stats.wins": increment(result ? 1 : 0),
+      "stats.totalSolveTime": increment(timeTaken)
+    });
+  } catch (error) {
+    console.error("Error saving game stats:", error);
+  }
+};
 
   const handleQuit = () => {
     setConfirmQuitModal(true);

@@ -1,67 +1,84 @@
+// src/Auth/Auth.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { 
+  registerUser, 
+  loginUser, 
+  onAuthStateChange, 
+  auth, 
+  logoutUser 
+} from '../../Firebase/userAuth';
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   // Check if user is already logged in
   useEffect(() => {
-    const currentUser = localStorage.getItem('currentUser');
-    if (currentUser) {
-      navigate('/gameStart');
-    }
+    const unsubscribe = onAuthStateChange((user) => {
+      if (user) {
+        navigate('/gameStart');
+      }
+    });
+
+    // Cleanup subscription
+    return () => unsubscribe();
   }, [navigate]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
 
-    if (!username.trim() || !password.trim()) {
+    if (!email.trim() || !password.trim()) {
       setError('Please fill in all fields');
+      setLoading(false);
       return;
     }
 
     if (isLogin) {
       // Login logic
-      const users = JSON.parse(localStorage.getItem('users') || '[]');
-      const user = users.find(
-        (u) => u.username === username && u.password === password
-      );
-
-      if (user) {
-        localStorage.setItem('currentUser', JSON.stringify(user));
-        navigate('/gameStart');
-      } else {
-        setError('Invalid username or password');
+      const { user, error } = await loginUser(email, password);
+      
+      if (error) {
+        setError(error);
+        setLoading(false);
+        return;
       }
+      
+      // Success - navigation handled by useEffect with onAuthStateChange
     } else {
       // Register logic
       if (password !== confirmPassword) {
         setError('Passwords do not match');
+        setLoading(false);
+        return;
+      }
+      
+      if (!username.trim()) {
+        setError('Username is required');
+        setLoading(false);
         return;
       }
 
-      const users = JSON.parse(localStorage.getItem('users') || '[]');
+      const { user, error } = await registerUser(email, password, username);
       
-      // Check if username already exists
-      if (users.some((u) => u.username === username)) {
-        setError('Username already exists');
+      if (error) {
+        setError(error);
+        setLoading(false);
         return;
       }
-
-      // Add new user
-      const newUser = { username, password, createdAt: new Date().toISOString() };
-      users.push(newUser);
-      localStorage.setItem('users', JSON.stringify(users));
-      localStorage.setItem('currentUser', JSON.stringify(newUser));
       
-      navigate('/gameStart');
+      // Success - navigation handled by useEffect with onAuthStateChange
     }
+    
+    setLoading(false);
   };
 
   return (
@@ -78,16 +95,32 @@ const Auth = () => {
         )}
 
         <form onSubmit={handleSubmit}>
+          {!isLogin && (
+            <div className="mb-4">
+              <label htmlFor="username" className="block text-sm font-medium text-gray-300 mb-2">
+                Username
+              </label>
+              <input
+                type="text"
+                id="username"
+                className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required={!isLogin}
+              />
+            </div>
+          )}
+          
           <div className="mb-4">
-            <label htmlFor="username" className="block text-sm font-medium text-gray-300 mb-2">
-              Username
+            <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
+              Email
             </label>
             <input
-              type="text"
-              id="username"
+              type="email"
+              id="email"
               className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
             />
           </div>
@@ -117,7 +150,7 @@ const Auth = () => {
                 className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                required
+                required={!isLogin}
               />
             </div>
           )}
@@ -125,9 +158,12 @@ const Auth = () => {
           <div className="flex justify-center">
             <button
               type="submit"
-              className="px-6 py-3 bg-purple-600 hover:bg-purple-500 rounded-md text-white font-semibold shadow-lg hover:shadow-xl transition-all w-full"
+              disabled={loading}
+              className={`px-6 py-3 bg-purple-600 hover:bg-purple-500 rounded-md text-white font-semibold shadow-lg hover:shadow-xl transition-all w-full ${
+                loading ? 'opacity-70 cursor-not-allowed' : ''
+              }`}
             >
-              {isLogin ? 'Sign In' : 'Sign Up'}
+              {loading ? 'Processing...' : isLogin ? 'Sign In' : 'Sign Up'}
             </button>
           </div>
         </form>
@@ -152,18 +188,15 @@ export default Auth;
 
 // AuthUtils - Helper functions to use throughout the app
 export const isAuthenticated = () => {
-  return localStorage.getItem('currentUser') !== null;
+  return !!auth.currentUser;
 };
 
-export const logout = (navigate) => {
-  localStorage.removeItem('currentUser');
+export const logout = async (navigate) => {
+  await logoutUser();
   navigate('/');
 };
 
 export const getUsername = () => {
-  const currentUser = localStorage.getItem('currentUser');
-  if (currentUser) {
-    return JSON.parse(currentUser).username;
-  }
-  return '';
+  const user = auth.currentUser;
+  return user ? user.displayName : '';
 };

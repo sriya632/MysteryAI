@@ -1,4 +1,7 @@
+// src/Stats/UserStats.jsx
 import React, { useState, useEffect } from 'react';
+import { auth, db } from '../../Firebase/userAuth';
+import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 
 const UserStats = () => {
   const [gameStats, setGameStats] = useState([]);
@@ -6,29 +9,44 @@ const UserStats = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchUserStats = () => {
+    const fetchUserStats = async () => {
       setLoading(true);
       
-      // Get current user from localStorage
-      const currentUser = localStorage.getItem('currentUser');
+      const currentUser = auth.currentUser;
       
       if (!currentUser) {
         setLoading(false);
         return;
       }
       
-      const userData = JSON.parse(currentUser);
-      setUsername(userData.username);
+      setUsername(currentUser.displayName || '');
       
-      // Get user game history from localStorage
-      const userGames = JSON.parse(localStorage.getItem(`games_${userData.username}`) || '[]');
-      
-      // Sort games by timestamp (newest first) and take the last 5
-      const sortedGames = userGames
-        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-        .slice(0, 5);
+      try {
+        // Get user's recent games from Firestore
+        const gamesRef = collection(db, "userGames");
+        const q = query(
+          gamesRef, 
+          where("userId", "==", currentUser.uid),
+          orderBy("timestamp", "desc"),
+          limit(5)
+        );
         
-      setGameStats(sortedGames);
+        const querySnapshot = await getDocs(q);
+        const games = [];
+        
+        querySnapshot.forEach((doc) => {
+          games.push({
+            id: doc.id,
+            ...doc.data(),
+            timestamp: doc.data().timestamp?.toDate?.() || new Date()
+          });
+        });
+        
+        setGameStats(games);
+      } catch (error) {
+        console.error("Error fetching stats:", error);
+      }
+      
       setLoading(false);
     };
     
